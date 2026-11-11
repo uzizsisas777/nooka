@@ -9,9 +9,34 @@ build-nupkg/
 app-1.0.0/
 app-1.0.1/
 
+# Dependencias y compilación (654 MB de node_modules y ~650 MB de target no van al repo)
+node_modules/
+target/
+desktop/dist/
+
+# Payloads del empaquetado de escritorio: pesan cientos de MB y su sitio es el release de GitHub, no el repo
+nooka-dist/app-*/
+nooka-dist/build-squirrel/
+nooka-dist/*.nupkg
+nooka-dist/*.asar.new
+nooka-dist/NookaSetup.exe
+
+# Entradas de compilación del setup: se regeneran en §6.4/§6.6 y la copia buena ya está en nooka-dist/
+nooka-setup/*.nupkg
+nooka-setup/nupkg-temp/
+nooka-setup/Update.exe
+nooka-setup/Nooka.exe
+nooka-setup/icon.ico
+
+# Intermediado de windres (lo vuelve a generar build.rs en cada compilación)
+*.o
+
 # IDE
 .vscode/
 .idea/
+
+# Certificados propios de desarrollo (el HTTPS del cliente mobile, que es lo que da micrófono)
+web/mobile/.certs/
 
 # OS
 .DS_Store

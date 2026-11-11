@@ -1,0 +1,6 @@
+{
+  "name": "nooka-desktop",
+  "version": "1.0.4",
+  "private": true,
+  "main": "main.js"
+}

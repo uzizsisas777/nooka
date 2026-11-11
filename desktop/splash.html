@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>Nooka</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #313338; color: #fff; font-family: "gg sans", "Segoe UI", system-ui, sans-serif; display: flex; align-items: center; justify-content: center; }
+  .box { text-align: center; }
+  .logo { width: 96px; height: 96px; margin: 0 auto 24px; border-radius: 24px; display: block; object-fit: cover; }
+  .spinner { width: 32px; height: 32px; margin: 24px auto 0; border: 3px solid rgba(255,255,255,0.15); border-top-color: #5865f2; border-radius: 50%; animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .status { margin-top: 16px; font-size: 13px; color: #b5bac1; }
+</style>
+</head>
+<body>
+  <div class="box">
+    <img class="logo" src="assets/icon-256.png" alt="Nooka" />
+    <div class="spinner"></div>
+    <div class="status">Cargando Nooka…</div>
+  </div>
+</body>
+</html>
