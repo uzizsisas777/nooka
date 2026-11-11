@@ -208,7 +208,7 @@ ipcMain.handle('nooka:window:isMaximized', () => (mainWindow ? mainWindow.isMaxi
 const THUMBNAIL_SIZE = { width: 256, height: 144 };
 
 // La última lista, conservada entera: `Streams.video` quiere una fuente de `getSources`, no un id
-// crudo (el paquete 1.0.4 corre Electron 28, y ahí la forma documentada es el objeto).
+// crudo (el paquete publicado corre Electron 28, y ahí la forma documentada es el objeto).
 let lastSources = new Map();
 
 // Una sola elección pendiente. No hay dos ventanas que puedan compartir: el splash no pregunta y el
