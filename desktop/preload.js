@@ -20,4 +20,12 @@ contextBridge.exposeInMainWorld('NookaNative', {
     close: () => ipcRenderer.send('nooka:window:close'),
     isMaximized: () => ipcRenderer.invoke('nooka:window:isMaximized'),
   },
+  // Compartir pantalla. El navegador tiene su propio selector; Electron no, así que el cliente pinta
+  // el suyo con estas dos llamadas y después llama a `getDisplayMedia()` normal, que el proceso
+  // principal atiende con la elección guardada. `choose` responde `false` si la fuente ya no existe
+  // (la ventana elegida se cerró mientras el modal estaba abierto).
+  capture: {
+    sources: () => ipcRenderer.invoke('nooka:capture:sources'),
+    choose: (sourceId) => ipcRenderer.invoke('nooka:capture:choose', sourceId),
+  },
 });

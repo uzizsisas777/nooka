@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, desktopCapturer, screen, session } = require('electron');
 const path = require('path');
 
 const isDev = !app.isPackaged;
@@ -169,6 +169,7 @@ app.on('second-instance', () => {
 
 app.whenReady().then(() => {
   if (!gotSingleInstanceLock) return;
+  installDisplayMediaHandler();
   createSplash();
   // Small delay so splash paints before heavy load
   setTimeout(() => createMainWindow(), 300);
@@ -196,3 +197,102 @@ ipcMain.on('nooka:window:minimize', () => { if (mainWindow) mainWindow.minimize(
 ipcMain.on('nooka:window:maximize', () => { if (mainWindow) (mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize()); });
 ipcMain.on('nooka:window:close', () => { if (mainWindow) mainWindow.close(); });
 ipcMain.handle('nooka:window:isMaximized', () => (mainWindow ? mainWindow.isMaximized() : false));
+
+// ─── Compartir pantalla ───────────────────────────────────────────────────────────────────────
+// Electron no trae selector de captura: sin handler, `navigator.mediaDevices.getDisplayMedia()`
+// rechaza con `NotAllowedError` y el botón «Compartir pantalla» no abre nada (así estaba hasta
+// 2026-11-11). El reparto de papeles es el inverso del de un navegador —allí el picker es del
+// Chrome; aquí el proceso principal sólo sabe QUÉ hay en pantalla y el renderer lo pinta, en
+// `web/src/components/dialogs/ScreenShareSourceModal.tsx`—. Entre los dos no viaja una pista,
+// viaja un id.
+const THUMBNAIL_SIZE = { width: 256, height: 144 };
+
+// La última lista, conservada entera: `Streams.video` quiere una fuente de `getSources`, no un id
+// crudo (el paquete 1.0.4 corre Electron 28, y ahí la forma documentada es el objeto).
+let lastSources = new Map();
+
+// Una sola elección pendiente. No hay dos ventanas que puedan compartir: el splash no pregunta y el
+// DevTools no corre la app.
+let pendingSourceId = null;
+
+// «Entire Screen 0» no le dice nada a nadie. Los monitores se rotulan con su tamaño y se marca el
+// principal, que es lo que Windows enseña en su propio selector. `display.size` viene en píxeles
+// lógicos (ya incluye el escalado), que es la cifra que ve el usuario en Configuración de pantalla.
+function displayLabels() {
+  const primary = String(screen.getPrimaryDisplay().id);
+  const labels = new Map();
+  screen.getAllDisplays().forEach((display, index) => {
+    labels.set(String(display.id), {
+      name: `Pantalla ${index + 1} · ${display.size.width}×${display.size.height}`,
+      primary: String(display.id) === primary
+    });
+  });
+  return labels;
+}
+
+async function captureSources() {
+  const sources = await desktopCapturer.getSources({
+    types: ['screen', 'window'],
+    thumbnailSize: THUMBNAIL_SIZE
+  });
+  const labels = displayLabels();
+  lastSources = new Map();
+  const rows = [];
+  for (const source of sources) {
+    const isScreen = source.id.startsWith('screen:');
+    // Una ventana minimizada o de un proceso ya muerto devuelve miniatura vacía y su captura sale
+    // congelada: en el selector del navegador esas filas existen y se pueden elegir; aquí no.
+    if (!isScreen && source.thumbnail.isEmpty()) continue;
+    const label = isScreen ? labels.get(String(source.display_id)) : null;
+    lastSources.set(source.id, source);
+    rows.push({
+      id: source.id,
+      kind: isScreen ? 'screen' : 'window',
+      name: label ? label.name : source.name,
+      primary: label ? label.primary : false,
+      thumbnail: source.thumbnail.isEmpty() ? null : source.thumbnail.toDataURL()
+    });
+  }
+  return rows;
+}
+
+// El `audioRequested` se ignora a propósito: la malla WebRTC no manda audio del sistema y
+// `web/src/voice.ts` no lo pide, así que darlo sería inventarse una pista que nadie consume.
+function installDisplayMediaHandler() {
+  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+    const chosenId = pendingSourceId;
+    // Se consume SIEMPRE, se atienda o no: una elección que sobreviva sería la que se comparta la
+    // próxima vez sin que nadie la pida.
+    pendingSourceId = null;
+    const chosen = chosenId ? lastSources.get(chosenId) : null;
+    // Sin elección no se comparte nada. Autoelegir el primer monitor sería lanzar el escritorio
+    // entero a una llamada que nadie autorizó: el cliente viejo (el de la web desplegada, que aún no
+    // tiene modal) se queda con su aviso de error, que es verdad.
+    if (chosen) {
+      callback({ video: chosen });
+      return;
+    }
+    // Denegar ES llamar al callback sin `video`, y Electron responde a eso con un `ThrowTypeError`
+    // SINCRONO (`shell/browser/electron_browser_context.cc`, rama `(video_requested && !has_video)`).
+    // Sin el `try` la excepción escapa del handler, rechaza el `async` que Electron pone por delante en
+    // `lib/browser/api/session.ts` y sale en consola como `UnhandledPromiseRejectionWarning`; el
+    // `AbortError` del renderer ya se lanzó a los 7 ms de medirlo.
+    try {
+      callback({});
+    } catch {
+      // Es la denegación, no un fallo nuestro: `web/src/voice.ts` muestra su aviso.
+    }
+  });
+}
+
+ipcMain.handle('nooka:capture:sources', () => captureSources());
+
+// Devuelve si la fuente sigue viva: entre que se pinta la lista y se pulsa «Compartir» la ventana
+// elegida se puede haber cerrado, y entonces el selector se relee en vez de abrir una captura falsa.
+// No se guarda nada cuando el id no está en la última lista: una elección muerta no puede colarse en
+// la próxima petición.
+ipcMain.handle('nooka:capture:choose', (_event, sourceId) => {
+  const live = typeof sourceId === 'string' && sourceId !== '' && lastSources.has(sourceId);
+  pendingSourceId = live ? sourceId : null;
+  return live;
+});
